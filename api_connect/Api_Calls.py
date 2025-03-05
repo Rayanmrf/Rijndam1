@@ -1,5 +1,5 @@
 import requests
-from config import API_BASE_URL
+from api_connect.config import API_BASE_URL
 
 def get_data_from_api(endpoint):
     # haalt data op van api
