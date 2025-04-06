@@ -1,52 +1,92 @@
-from api_connect.Api_Calls import get_data_from_api
-from api_connect.config import API_BASE_URL
-from data.data_transformer import read_excel_to_dataframe, save_to_csv, anonymize_data, process_silver_layer, process_gold_layer, transform_data_for_analysis
-
-import datetime
-from datetime import datetime
 import pandas as pd
-
-
-def process_data_layer(layer):
-    if layer == "bronze":
-        # Read raw data and save without processing
-        print(f'{datetime.now()} | Reading Excel data from PDI.xlsx for Bronze layer...')
-        raw_data = read_excel_to_dataframe('input_data/PDI.xlsx')
-        save_to_csv(raw_data, 'output', filename="PDI_bronze.csv")
-        print(f'{datetime.now()} | Bronze layer data saved.')
-    elif layer == "silver":
-        # Perform light cleaning and anonymization and drop some of the columns
-        print(f'{datetime.now()} | Reading Excel data from PDI.xlsx for Silver layer...')
-        raw_data = read_excel_to_dataframe('input_data/PDI.xlsx')
-        processed_data = anonymize_data(raw_data)
-        processed_data = process_silver_layer(processed_data)
-        save_to_csv(processed_data, 'output', filename="PDI_silver.csv")
-        print(f'{datetime.now()} | Silver layer data saved.')
-    elif layer == "gold":
-        # Optimize data for analysis
-        print(f'{datetime.now()} | Reading Excel data from PDI.xlsx for Gold layer...')
-        raw_data = read_excel_to_dataframe('input_data/PDI.xlsx')
-        processed_data = anonymize_data(raw_data)
-        # optimized_data = transform_to_wide_format(processed_data)
-        # optimized_data = transform_data_for_analysis(optimized_data)
-        # optimized_data = process_gold_layer(optimized_data)
-
-        optimized_data = process_gold_layer(processed_data)
-        save_to_csv(optimized_data, 'output', filename="PDI_gold.csv")
-        print(f'{datetime.now()} | Gold layer data saved.')
-
-
+import os
+from datetime import datetime
+from data.data_transformer import (
+    read_excel_files,
+    save_to_csv,
+    save_to_sqlite,
+    process_silver_layer,
+    process_gold_layer,
+    save_tracks,
+    transform_to_wide_format,
+    log
+)
 
 def main():
-    while True:
-        layer_to_process = input("Enter data layer to process (bronze, silver, gold) or 'exit' to quit: ")
-        if layer_to_process.lower() in ['bronze', 'silver', 'gold']:
-            process_data_layer(layer_to_process.lower())
-        elif layer_to_process.lower() == 'exit':
-            print("Exiting program...")
-            break
-        else:
-            print("Invalid input, try again.")
+    input_dir = 'input_data'
+    output_dir_csv = 'output_csv'
+    output_dir_db = 'output_database'
+    db_path = os.path.join(output_dir_db, 'output_db.db')
 
-if __name__ == "__main__":
+    try:
+        # Clear previous log (only once, at the beginning)
+        log_dir = 'logs'
+        log_path = os.path.join(log_dir, f"output_log_{datetime.now().date()}.txt")
+        if os.path.exists(log_path):
+            os.remove(log_path)
+
+        log("ETL pipeline started.")
+
+        # Step 1: Read Excel files
+        try:
+            pdi_data, codebook_data = read_excel_files(input_dir)
+        except Exception as e:
+            log(f"[ERROR] Failed to read Excel files: {e}")
+            return
+
+        # Step 2: Bronze layer
+        try:
+            save_to_csv(pdi_data, output_dir_csv, 'PDI_bronze.csv')
+            save_to_csv(codebook_data, output_dir_csv, 'PDI_codebook_bronze.csv')
+            save_to_sqlite(pdi_data, db_path, 'PDI_bronze')
+            save_to_sqlite(codebook_data, db_path, 'PDI_codebook_bronze')
+            log("Bronze layer saved.")
+        except Exception as e:
+            log(f"[ERROR] Failed during Bronze layer: {e}")
+            return
+
+        # Step 3: Silver layer
+        try:
+            combined_data = pd.concat([pdi_data], ignore_index=True)
+            silver_data = process_silver_layer(combined_data.copy())
+            save_to_csv(silver_data, output_dir_csv, 'combined_silver.csv')
+            save_to_sqlite(silver_data, db_path, 'combined_silver')
+            log("Silver layer saved.")
+        except Exception as e:
+            log(f"[ERROR] Failed during Silver layer: {e}")
+            return
+
+        # Step 4: Gold layer
+        try:
+            gold_data = process_gold_layer(combined_data.copy())
+            save_to_csv(gold_data, output_dir_csv, 'combined_gold.csv')
+            save_to_sqlite(gold_data, db_path, 'combined_gold')
+            log("Gold layer saved.")
+        except Exception as e:
+            log(f"[ERROR] Failed during Gold layer: {e}")
+            return
+
+        # Step 5: Wide format
+        try:
+            wide_data = transform_to_wide_format(gold_data)
+            save_to_csv(wide_data, output_dir_csv, 'combined_wide.csv')
+            save_to_sqlite(wide_data, db_path, 'combined_wide')
+            log("Wide format saved.")
+        except Exception as e:
+            log(f"[ERROR] Failed during Wide format: {e}")
+            return
+
+        # Step 6: Per-track exports
+        try:
+            save_tracks(gold_data, output_dir_csv, db_path=db_path)
+            log("Track-based exports completed.")
+        except Exception as e:
+            log(f"[ERROR] Failed during per-track exports: {e}")
+            return
+
+        log("ETL pipeline completed successfully.")
+    except Exception as e:
+        log(f"[FATAL] Unexpected error in ETL pipeline: {e}")
+
+if __name__ == '__main__':
     main()
