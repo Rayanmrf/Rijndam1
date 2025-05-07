@@ -3,21 +3,20 @@ import os
 import hashlib
 from datetime import datetime
 import sqlite3
+import subprocess
 
 def log(message):
     """Log messages to console and a daily log file."""
     timestamp = datetime.now()
     log_entry = f"{timestamp} | {message}"
 
-    # Show in console
+
     print(log_entry)
 
-    # Prepare log directory and daily file
     log_dir = 'logs'
     os.makedirs(log_dir, exist_ok=True)
     log_path = os.path.join(log_dir, f"output_log_{datetime.now().date()}.txt")
 
-    # Always append (we already cleared the file at the start of the run)
     with open(log_path, 'a', encoding='utf-8') as log_file:
         log_file.write(log_entry + '\n')
 
@@ -69,6 +68,29 @@ def calculate_age(row, reference_date):
     try:
         birth_date = datetime(int(row['grs_birthyear']), int(row['grs_birthmonth']), 15)
         return int((reference_date - birth_date).days // 365.25)
+        # age = int((reference_date - birth_date).days // 365.25)
+        # if age < 0:
+        #     return "Invalid"
+        # elif age <= 10:
+        #     return "0-10"
+        # elif age <= 17:
+        #     return "11-17"
+        # elif age <= 24:
+        #     return "18-24"
+        # elif age <= 34:
+        #     return "25-34"
+        # elif age <= 44:
+        #     return "35-44"
+        # elif age <= 54:
+        #     return "45-54"
+        # elif age <= 64:
+        #     return "55-64"
+        # elif age <= 74:
+        #     return "65-74"
+        # elif age <= 84:
+        #     return "75-84"
+        # else:
+        #     return "85+"
     except:
         return None
 
@@ -177,19 +199,37 @@ def save_tracks(df, output_dir, db_path=None):
             log(f"[ERROR] Failed to export track '{track}': {e}")
 
 def transform_to_wide_format(df):
-    if df.empty or 'respondentid' not in df.columns:
-        log("Wide format skipped — missing data.")
+    if df.empty or 'respondentid' not in df.columns or 'track_name' not in df.columns or 'PDIscore' not in df.columns:
+        log("Wide format skipped — missing required columns.")
         return pd.DataFrame()
 
     try:
-        question_cols = [col for col in df.columns if '_SQ001' in col]
-        wide_df = df.pivot_table(
-            index=['respondentid', 'resptrackid', 'round_description', 'track_name', 'age', 'Gender'],
-            values=question_cols,
-            aggfunc='first'
-        ).reset_index()
+        log("Starting wide format transformation...")
+
+        df = df.sort_values(by='completion_time', ascending=True)
+        wide_rows = []
+
+        
+        for respondent_id, group in df.groupby('respondentid'):
+            row = {
+                'respondentid': respondent_id,
+                'Gender': group['Gender'].iloc[0] if 'Gender' in group.columns else None,
+                'age': group['age'].iloc[0] if 'age' in group.columns else None
+            }
+
+           
+            for i, (_, record) in enumerate(group.iterrows(), start=1):
+                row[f'traject_{i}'] = record.get('track_name', '')
+                row[f'score_{i}'] = record.get('PDIscore', '')
+
+            wide_rows.append(row)
+
+        wide_df = pd.DataFrame(wide_rows)
         log("Wide format transformation completed.")
         return wide_df
+
     except Exception as e:
         log(f"[ERROR] Wide format transformation failed: {e}")
         return pd.DataFrame()
+
+
