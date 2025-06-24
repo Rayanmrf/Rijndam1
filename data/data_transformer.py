@@ -71,29 +71,6 @@ def calculate_age(row, reference_date):
     try:
         birth_date = datetime(int(row['grs_birthyear']),int(row['grs_birthmonth']), 15 )
         return int((reference_date - birth_date).days // 365.25)
-        # age = int((reference_date - birth_date).days // 365.25)
-        # if age < 0:
-        #     return "Invalid"
-        # elif age <= 10:
-        #     return "0-10"
-        # elif age <= 17:
-        #     return "11-17"
-        # elif age <= 24:
-        #     return "18-24"
-        # elif age <= 34:
-        #     return "25-34"
-        # elif age <= 44:
-        #     return "35-44"
-        # elif age <= 54:
-        #     return "45-54"
-        # elif age <= 64:
-        #     return "55-64"
-        # elif age <= 74:
-        #     return "65-74"
-        # elif age <= 84:
-        #     return "75-84"
-        # else:
-        #     return "85+"
     except:
         return None
 
