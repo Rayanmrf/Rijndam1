@@ -23,7 +23,7 @@ def log(message):
 
 
 def read_excel_files(input_dir):
-    pdi_dfs,codebook_dfs = [], []
+    pdi_dfs, codebook_dfs = [], []
 
     for filename in os.listdir(input_dir):
         if filename.endswith(".xlsx"):
@@ -32,32 +32,45 @@ def read_excel_files(input_dir):
                 log(f"Reading Excel file: {filename}")
                 df = pd.read_excel(path)
 
-                if identify_structure(df)== 'pdi':
+                if identify_structure(df) == 'pdi':
                     pdi_dfs.append(df)
                 else:
                     codebook_dfs.append(df)
             except Exception as e:
                 log(f"[ERROR] Failed to load {filename}: {e}")
 
-    return(
+    # Info als een van de 2 leeg is
+    if not pdi_dfs:
+        log("[INFO] No PDI files found.")
+    if not codebook_dfs:
+        log("[INFO] No Codebook files found.")
+
+    return (
         pd.concat(pdi_dfs, ignore_index=True) if pdi_dfs else pd.DataFrame(),
-        pd.concat(codebook_dfs, ignore_index=True) if codebook_dfs else pd.DataFrame())
+        pd.concat(codebook_dfs, ignore_index=True) if codebook_dfs else pd.DataFrame()
+    )
 
 def identify_structure(df):
     return 'codebook' if 'answer_codes' in df.columns else 'pdi'
 
 
-
 def save_to_csv(df, output_dir, filename):
+    if df.empty:
+        log(f"[INFO] Skipped saving {filename} — DataFrame is empty.")
+        return
     try:
         os.makedirs(output_dir, exist_ok=True)
         path = os.path.join(output_dir, filename)
-        df.to_csv(path, index =False)
+        df.to_csv(path, index=False)
         log(f"Saved CSV: {path}")
     except Exception as e:
         log(f"[ERROR] Failed to save CSV {filename}: {e}")
 
+
 def save_to_sqlite(df, db_path, table_name):
+    if df.empty:
+        log(f"[INFO] Skipped saving table {table_name} — DataFrame is empty.")
+        return
     try:
         os.makedirs(os.path.dirname(db_path), exist_ok=True)
         conn = sqlite3.connect(db_path)
@@ -66,6 +79,7 @@ def save_to_sqlite(df, db_path, table_name):
         log(f"Saved to SQLite table: {table_name}")
     except Exception as e:
         log(f"[ERROR] Failed to write to SQLite ({table_name}): {e}")
+
 
 def calculate_age(row, reference_date):
     try:
